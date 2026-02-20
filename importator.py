@@ -154,7 +154,7 @@ def make_figure(selected: set) -> go.Figure:
 # ─────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### Sélection des stations")
-    st.caption("Alternative au clic sur la carte")
+    st.caption("Cochez les stations à télécharger · Les stations sélectionnées s'affichent en vert sur la carte")
 
     search = st.text_input("Filtrer", placeholder="ex: FJS, BLE…").upper().strip()
     filtered = [s for s in ALL_STATIONS if not search or search in s]
@@ -185,44 +185,20 @@ col_map, col_par = st.columns([3, 2], gap="large")
 #  COLONNE CARTE
 # ══════════════════════════════════════════════════════════════
 with col_map:
-    st.markdown("#### Carte interactive — cliquez sur une station pour la sélectionner")
-    st.caption("🖱 Cliquez sur un rond pour sélectionner / désélectionner · Molette pour zoomer · Glisser pour déplacer")
+    st.markdown("#### Carte des stations — réseau PF, La Réunion")
+    st.caption("🗺 Visualisation des stations · Les stations sélectionnées apparaissent en vert · Sélection via le panneau gauche ☰")
 
     fig = make_figure(st.session_state.selected_stations)
-    event = st.plotly_chart(
+    st.plotly_chart(
         fig,
         key="station_map",
-        on_select="rerun",
-        selection_mode="points",
         use_container_width=True,
     )
-
-    # Traitement du clic
-    if event and event.selection and event.selection.points:
-        for pt in event.selection.points:
-            code = pt.get("customdata")
-            if code and code in STATIONS_COORDS:
-                if code in st.session_state.selected_stations:
-                    st.session_state.selected_stations.discard(code)
-                else:
-                    st.session_state.selected_stations.add(code)
-        st.rerun()
-
-    # Boutons sélection rapide
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("✅ Tout sélectionner", use_container_width=True):
-            st.session_state.selected_stations = set(ALL_STATIONS)
-            st.rerun()
-    with c2:
-        if st.button("❌ Effacer sélection", use_container_width=True):
-            st.session_state.selected_stations.clear()
-            st.rerun()
 
     # Résumé sélection
     n = len(st.session_state.selected_stations)
     if n == 0:
-        st.info("Aucune station sélectionnée — cliquez sur la carte ou utilisez la barre latérale.")
+        st.info("Aucune station sélectionnée — cochez les stations dans le panneau ☰ à gauche.")
     else:
         sel_sorted = sorted(st.session_state.selected_stations)
         st.success(f"**{n} station(s) sélectionnée(s) :** {', '.join(sel_sorted)}")
