@@ -170,8 +170,16 @@ with st.sidebar:
 #  EN-TÊTE
 # ─────────────────────────────────────────────────────────────
 st.markdown(
-    "<h1 style='text-align:center;color:#4ecdc4;margin-bottom:0'>🌋 IMPORTATOR</h1>"
-    "<p style='text-align:center;color:#888;margin-top:0'>Réseau sismique PF · Piton de la Fournaise · La Réunion</p>",
+    "<h1 style='text-align:center;color:#4ecdc4;margin-bottom:6px'>🌋 IMPORTATOR</h1>"
+    "<p style='text-align:center;color:#cccccc;font-size:1.05em;margin-bottom:4px'>"
+    "Application de téléchargement de données sismiques brutes (format MiniSEED) "
+    "depuis le serveur FDSN de l'IPGP.<br>"
+    "Sélectionnez les stations, la date, l'heure et la durée souhaitées, "
+    "puis téléchargez l'archive en un clic."
+    "</p>"
+    "<p style='text-align:center;color:#666;font-size:0.88em;margin-top:2px'>"
+    "Réseau sismique PF · Piton de la Fournaise · La Réunion"
+    "</p>",
     unsafe_allow_html=True,
 )
 st.divider()
