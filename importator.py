@@ -6,6 +6,8 @@ Données FDSN : http://ws.ipgp.fr
 import streamlit as st
 from datetime import date, datetime
 import requests
+import zipfile
+import io
 
 import plotly.graph_objects as go
 
@@ -321,55 +323,97 @@ if download_clicked:
         st.divider()
         st.markdown("### Téléchargement en cours…")
 
-        # Calcul des temps avec marge de sécurité
-        dt_start = datetime.strptime(dt_str, "%Y-%m-%dT%H:%M:%S")
-        safety   = 5  # secondes
-        t_start  = dt_start.strftime("%Y-%m-%dT%H:%M:%S")
-        dt_end   = datetime.fromtimestamp(dt_start.timestamp() + int(duree))
-        t_end    = dt_end.strftime("%Y-%m-%dT%H:%M:%S")
+        dt_start  = datetime.strptime(dt_str, "%Y-%m-%dT%H:%M:%S")
+        t_start   = dt_start.strftime("%Y-%m-%dT%H:%M:%S")
+        dt_end    = datetime.fromtimestamp(dt_start.timestamp() + int(duree))
+        t_end     = dt_end.strftime("%Y-%m-%dT%H:%M:%S")
+        zip_label = f"PF_{dt_start.strftime('%Y%m%d_%H%M%S')}_{int(duree)}s.zip"
 
-        total    = len(selected_list)
-        messages = []
+        total        = len(selected_list)
+        messages     = []
+        ok_stations  = []
+        zip_buffer   = io.BytesIO()
 
         progress_bar = st.progress(0, text="Initialisation…")
         log_area     = st.empty()
 
-        for i, station in enumerate(selected_list, 1):
-            progress_bar.progress(i / total, text=f"[{i}/{total}] {station}…")
-            try:
-                params = {
-                    "network":   "PF",
-                    "station":   station,
-                    "location":  "00",
-                    "channel":   compo,
-                    "starttime": t_start,
-                    "endtime":   t_end,
-                    "format":    "miniseed",
-                }
-                resp = requests.get(FDSN_URL, params=params, timeout=60)
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            for i, station in enumerate(selected_list, 1):
+                progress_bar.progress(i / total, text=f"[{i}/{total}] {station}…")
+                try:
+                    params = {
+                        "network":   "PF",
+                        "station":   station,
+                        "location":  "00",
+                        "channel":   compo,
+                        "starttime": t_start,
+                        "endtime":   t_end,
+                        "format":    "miniseed",
+                    }
+                    resp = requests.get(FDSN_URL, params=params, timeout=60)
 
-                if resp.status_code == 204 or len(resp.content) == 0:
-                    messages.append(f"⚠️ **{station}** — Aucune donnée disponible")
-                elif resp.status_code == 200:
-                    fname = f"{station}_{dt_start.strftime('%Y%m%d_%H%M%S')}.mseed"
-                    st.download_button(
-                        label=f"💾 Télécharger {fname}",
-                        data=resp.content,
-                        file_name=fname,
-                        mime="application/octet-stream",
-                        key=f"dl_{station}",
-                    )
-                    messages.append(f"✅ **{station}** — prêt ({len(resp.content)//1024} Ko)")
-                else:
-                    messages.append(f"❌ **{station}** — Erreur HTTP {resp.status_code}")
+                    if resp.status_code == 204 or len(resp.content) == 0:
+                        messages.append(f"⚠️ **{station}** — Aucune donnée disponible")
+                    elif resp.status_code == 200:
+                        fname = f"{station}_{dt_start.strftime('%Y%m%d_%H%M%S')}.mseed"
+                        zf.writestr(fname, resp.content)
+                        ok_stations.append(station)
+                        messages.append(f"✅ **{station}** — {len(resp.content)//1024} Ko")
+                    else:
+                        messages.append(f"❌ **{station}** — Erreur HTTP {resp.status_code}")
 
-            except requests.exceptions.Timeout:
-                messages.append(f"❌ **{station}** — Délai dépassé (timeout 60s)")
-            except Exception as e:
-                messages.append(f"❌ **{station}** — Erreur : {e}")
+                except requests.exceptions.Timeout:
+                    messages.append(f"❌ **{station}** — Délai dépassé (timeout 60s)")
+                except Exception as e:
+                    messages.append(f"❌ **{station}** — Erreur : {e}")
 
-            log_area.markdown("\n\n".join(messages))
+                log_area.markdown("\n\n".join(messages))
 
         progress_bar.progress(1.0, text="Terminé !")
-        st.success(f"Terminé — {total} station(s) traitée(s).")
+
+        # ── Fenêtre de confirmation style pop-up ──────────────────────
+        if ok_stations:
+            st.markdown(
+                f"""
+                <div style="
+                    background: linear-gradient(135deg, #0d4f3c, #0d6e4f);
+                    border: 2px solid #4ecdc4;
+                    border-radius: 14px;
+                    padding: 28px 32px;
+                    margin: 20px auto;
+                    max-width: 680px;
+                    text-align: center;
+                    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+                ">
+                    <div style="font-size:2.4em; margin-bottom:8px">✅</div>
+                    <div style="font-size:1.3em; font-weight:bold; color:#4ecdc4; margin-bottom:12px">
+                        Traces sismiques prêtes
+                    </div>
+                    <div style="color:#ccc; font-size:0.95em; margin-bottom:6px">
+                        <b>{len(ok_stations)}</b> station(s) récupérée(s) :
+                        <span style="color:#fff">{', '.join(ok_stations)}</span>
+                    </div>
+                    <div style="color:#aaa; font-size:0.85em; margin-bottom:16px">
+                        Début : <b>{dt_str}</b> &nbsp;·&nbsp; Durée : <b>{duree} s</b>
+                        &nbsp;·&nbsp; Composante : <b>{compo}</b>
+                    </div>
+                    <div style="color:#ffcc66; font-size:0.85em">
+                        📦 Cliquez sur le bouton ci-dessous pour télécharger l'archive ZIP
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            zip_buffer.seek(0)
+            st.download_button(
+                label=f"📦 Télécharger {zip_label}  ({len(ok_stations)} fichier(s) .mseed)",
+                data=zip_buffer.getvalue(),
+                file_name=zip_label,
+                mime="application/zip",
+                use_container_width=True,
+            )
+        else:
+            st.warning("Aucune donnée récupérée pour les stations sélectionnées.")
+
         st.session_state.messages = messages
