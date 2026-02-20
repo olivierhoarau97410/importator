@@ -5,11 +5,7 @@ Données FDSN : http://ws.ipgp.fr
 """
 import streamlit as st
 from datetime import date, datetime
-import os
-
-from obspy.clients.fdsn import Client
-from obspy.core import UTCDateTime
-from obspy.clients.fdsn.header import FDSNNoDataException
+import requests
 
 import plotly.graph_objects as go
 
@@ -310,8 +306,13 @@ with st.sidebar:
             st.session_state.selected_stations.discard(sta)
 
 # ─────────────────────────────────────────────────────────────
-#  TÉLÉCHARGEMENT
+#  TÉLÉCHARGEMENT — appels HTTP directs au serveur FDSN IPGP
+#  URL : http://ws.ipgp.fr/fdsnws/dataselect/1/query
+#  Paramètres : network, station, location, channel, starttime, endtime
+#  Le fichier MiniSEED brut est proposé en téléchargement dans le navigateur.
 # ─────────────────────────────────────────────────────────────
+FDSN_URL = "https://ws.ipgp.fr/fdsnws/dataselect/1/query"
+
 if download_clicked:
     selected_list = sorted(st.session_state.selected_stations)
     if not selected_list:
@@ -320,12 +321,15 @@ if download_clicked:
         st.divider()
         st.markdown("### Téléchargement en cours…")
 
-        client    = Client("http://ws.ipgp.fr")
-        stime     = UTCDateTime(dt_str)
-        etime     = stime + int(duree)
-        safety    = 5
-        total     = len(selected_list)
-        messages  = []
+        # Calcul des temps avec marge de sécurité
+        dt_start = datetime.strptime(dt_str, "%Y-%m-%dT%H:%M:%S")
+        safety   = 5  # secondes
+        t_start  = dt_start.strftime("%Y-%m-%dT%H:%M:%S")
+        dt_end   = datetime.fromtimestamp(dt_start.timestamp() + int(duree))
+        t_end    = dt_end.strftime("%Y-%m-%dT%H:%M:%S")
+
+        total    = len(selected_list)
+        messages = []
 
         progress_bar = st.progress(0, text="Initialisation…")
         log_area     = st.empty()
@@ -333,26 +337,39 @@ if download_clicked:
         for i, station in enumerate(selected_list, 1):
             progress_bar.progress(i / total, text=f"[{i}/{total}] {station}…")
             try:
-                st_obs = client.get_waveforms(
-                    "PF", station, "00", compo,
-                    stime - safety, etime + safety,
-                    attach_response=True,
-                )
-                st_obs.detrend(type="demean")
-                st_obs.remove_response(output="VEL")
-                st_obs.filter("highpass", freq=1.0)
-                st_obs.trim(stime, etime, nearest_sample=False)
-                fname = f"{station}.mseed"
-                st_obs.write(fname, format="MSEED")
-                cwd = os.getcwd()
-                messages.append(f"✅ **{station}** → `{cwd}/{fname}`")
-            except FDSNNoDataException:
-                messages.append(f"⚠️ **{station}** — Aucune donnée disponible")
+                params = {
+                    "network":   "PF",
+                    "station":   station,
+                    "location":  "00",
+                    "channel":   compo,
+                    "starttime": t_start,
+                    "endtime":   t_end,
+                    "format":    "miniseed",
+                }
+                resp = requests.get(FDSN_URL, params=params, timeout=60)
+
+                if resp.status_code == 204 or len(resp.content) == 0:
+                    messages.append(f"⚠️ **{station}** — Aucune donnée disponible")
+                elif resp.status_code == 200:
+                    fname = f"{station}_{dt_start.strftime('%Y%m%d_%H%M%S')}.mseed"
+                    st.download_button(
+                        label=f"💾 Télécharger {fname}",
+                        data=resp.content,
+                        file_name=fname,
+                        mime="application/octet-stream",
+                        key=f"dl_{station}",
+                    )
+                    messages.append(f"✅ **{station}** — prêt ({len(resp.content)//1024} Ko)")
+                else:
+                    messages.append(f"❌ **{station}** — Erreur HTTP {resp.status_code}")
+
+            except requests.exceptions.Timeout:
+                messages.append(f"❌ **{station}** — Délai dépassé (timeout 60s)")
             except Exception as e:
                 messages.append(f"❌ **{station}** — Erreur : {e}")
 
             log_area.markdown("\n\n".join(messages))
 
         progress_bar.progress(1.0, text="Terminé !")
-        st.success(f"Téléchargement terminé — {total} station(s) traitée(s).")
+        st.success(f"Terminé — {total} station(s) traitée(s).")
         st.session_state.messages = messages
