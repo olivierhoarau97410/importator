@@ -149,6 +149,24 @@ def make_figure(selected: set) -> go.Figure:
     return fig
 
 # ─────────────────────────────────────────────────────────────
+#  BARRE LATÉRALE — traitée EN PREMIER pour que session_state
+#  soit à jour avant le rendu des colonnes et du bouton
+# ─────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("### Sélection des stations")
+    st.caption("Alternative au clic sur la carte")
+
+    search = st.text_input("Filtrer", placeholder="ex: FJS, BLE…").upper().strip()
+    filtered = [s for s in ALL_STATIONS if not search or search in s]
+
+    for sta in filtered:
+        checked = sta in st.session_state.selected_stations
+        if st.checkbox(sta, value=checked, key=f"cb_{sta}"):
+            st.session_state.selected_stations.add(sta)
+        else:
+            st.session_state.selected_stations.discard(sta)
+
+# ─────────────────────────────────────────────────────────────
 #  EN-TÊTE
 # ─────────────────────────────────────────────────────────────
 st.markdown(
@@ -287,25 +305,7 @@ with col_par:
         "🔽 TÉLÉCHARGER",
         type="primary",
         use_container_width=True,
-        disabled=(len(st.session_state.selected_stations) == 0),
     )
-
-# ─────────────────────────────────────────────────────────────
-#  BARRE LATÉRALE — sélection alternative via liste
-# ─────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown("### Sélection des stations")
-    st.caption("Alternative au clic sur la carte")
-
-    search = st.text_input("Filtrer", placeholder="ex: FJS, BLE…").upper().strip()
-    filtered = [s for s in ALL_STATIONS if not search or search in s]
-
-    for sta in filtered:
-        checked = sta in st.session_state.selected_stations
-        if st.checkbox(sta, value=checked, key=f"cb_{sta}"):
-            st.session_state.selected_stations.add(sta)
-        else:
-            st.session_state.selected_stations.discard(sta)
 
 # ─────────────────────────────────────────────────────────────
 #  TÉLÉCHARGEMENT — appels HTTP directs au serveur FDSN IPGP
